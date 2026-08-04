@@ -1,0 +1,138 @@
+# ngrok-axum
+
+Serve an Axum app through an ngrok tunnel with one call:
+
+```rust
+use axum::{routing::get, Router};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let app = Router::new().route("/", get(|| async { "hello" }));
+    ngrok_axum::serve(app, ngrok_axum::Config::default()).await?;
+    Ok(())
+}
+```
+
+## Why this exists
+
+`ngrok-rust` + Axum used to be a one-liner:
+
+```rust
+axum::Server::builder(listener).serve(app.into_make_service()).await?;
+```
+
+Axum 0.7 removed `axum::Server`. A real user hit exactly this break
+([ngrok-rust#136](https://github.com/ngrok/ngrok-rust/issues/136)), and it was closed by
+updating [the official example](https://github.com/ngrok/ngrok-rust/blob/main/ngrok/examples/axum.rs)
+to a ~30-line manual connection-serving loop instead of restoring a one-liner. `serve()` is
+that restored one-liner — everyone using `ngrok-rust` with Axum today either copies that loop
+or writes their own equivalent.
+
+## Setup
+
+1. Sign up at [ngrok.com](https://ngrok.com) and grab an authtoken from
+   [the dashboard](https://dashboard.ngrok.com/authtokens).
+2. Set it as an env var:
+   ```
+   NGROK_AUTHTOKEN=your_token_here
+   ```
+3. Add the dependency and call `serve`:
+   ```toml
+   [dependencies]
+   ngrok-axum = "0.1"
+   axum = "0.7"
+   tokio = { version = "1", features = ["full"] }
+   ```
+
+You'll get a public URL bound to your ngrok account's default dev domain if you don't specify
+one — see [`examples/basic.rs`](examples/basic.rs).
+
+## Config
+
+```rust
+let config = ngrok_axum::Config {
+    url: Some("your-reserved-domain.ngrok.app".to_string()), // None = account's default dev domain
+    pooling: false,
+    traffic_policy: Some(r#"
+on_http_request:
+  - actions:
+      - type: basic-auth
+        config:
+          credentials:
+            - "user:password123"
+"#.to_string()),
+    binding: None, // Some(ngrok_axum::Binding::Internal) etc.
+};
+
+ngrok_axum::serve(app, config).await?;
+```
+
+See [`examples/with_config.rs`](examples/with_config.rs) for a working example.
+
+## Multiple endpoints
+
+`serve_many` opens one endpoint per [`Endpoint`], each with its own `Router` and `Config`, all
+on a single session, served concurrently:
+
+```rust
+use ngrok_axum::{serve_many, Config, Endpoint};
+
+serve_many(vec![
+    Endpoint {
+        app: app_a,
+        config: Config { url: Some("app.mycompany.ngrok.app".into()), ..Default::default() },
+    },
+    Endpoint {
+        app: app_b,
+        config: Config { url: Some("api.mycompany.ngrok.app".into()), ..Default::default() },
+    },
+])
+.await?;
+```
+
+`serve(app, config)` is just `serve_many(vec![Endpoint { app, config }])` — the one-endpoint
+case of the same function. See [`examples/multi.rs`](examples/multi.rs) (two distinct domains,
+two distinct apps) and [`examples/pooling.rs`](examples/pooling.rs) (one domain, `pooling:
+true`, two apps sharing it with load-balanced routing).
+
+| Field | Type | Description |
+|---|---|---|
+| `url` | `Option<String>` | Reserved domain for this endpoint. `None` falls back to the account's default dev domain. |
+| `pooling` | `bool` | Opt in to ngrok endpoint pooling — required if another endpoint on the same session would otherwise collide on the same domain. See [Collisions](#collisions) below. |
+| `traffic_policy` | `Option<String>` | A raw [ngrok Traffic Policy](https://ngrok.com/docs/traffic-policy/) document (YAML or JSON) — the mechanism for auth, IP restrictions, header manipulation, webhook verification, and more. The granular builder methods on `ngrok-rust`'s `HttpTunnelBuilder` (`basic_auth`, `oauth`, `allow_cidr`, etc.) mirror ngrok's old "Edge Modules" system, superseded by Traffic Policy — use this instead. |
+| `binding` | `Option<Binding>` | `Public` / `Internal` / `Kubernetes` ingress configuration. Not part of Traffic Policy (checked ngrok's actions reference directly — no equivalent exists), so it stays a standalone field. `Internal` requires `url` to end in `.internal`, enforced by ngrok itself (`ERR_NGROK_9029` if it doesn't). |
+
+## Collisions
+
+Two distinct failure modes to know about:
+
+- **Same-session, no domain / same domain, no pooling**: the raw SDK does **not** error on
+  this — confirmed live against the real SDK, isolated from this crate, that two listeners
+  opened this way both succeed with the identical URL, no error either time, only the most
+  recently opened one actually receiving traffic. `serve_many` guards against it itself: pass
+  two endpoints that would collide without `pooling: true` on both, and it returns a clear
+  error immediately (before opening a session at all — verified this happens even with no
+  `NGROK_AUTHTOKEN` set, confirming the guard runs before any network call). See
+  [`examples/collision.rs`](examples/collision.rs) for the failing case and
+  [`examples/pooling.rs`](examples/pooling.rs) for the working one, both live-tested.
+- **Cross-session claim** (another running agent, or a dashboard-configured Cloud Endpoint,
+  already bound to that domain): this **does** error, loudly — `ERR_NGROK_334: "already
+  online... stop your existing endpoint first, or start both endpoints with
+  --pooling-enabled"`. If you hit this and nothing on your machine looks like it's using that
+  domain, check the [ngrok dashboard](https://dashboard.ngrok.com/endpoints) for a persistent
+  Cloud Endpoint configured on it.
+
+## Development
+
+```
+cargo build
+cargo test
+cargo run --example basic
+```
+
+See [`DESIGN.md`](DESIGN.md) for the design rationale, prior art check, and everything
+confirmed empirically along the way.
+
+## License
+
+MIT OR Apache-2.0
