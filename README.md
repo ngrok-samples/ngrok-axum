@@ -13,19 +13,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 ```
 
-## Why this exists
-
-`ngrok-rust` + Axum used to be a one-liner:
-
-```rust
-axum::Server::builder(listener).serve(app.into_make_service()).await?;
-```
-
-Axum 0.7 removed `axum::Server`. The work around was a ~30-line manual 
-connection-serving loop instead of restoring a one-liner. `serve()` is
-that restored one-liner — everyone using `ngrok-rust` with Axum today 
-either copies that loop or writes their own equivalent.
-
 ## Setup
 
 1. Sign up at [ngrok.com](https://ngrok.com) and grab an authtoken from
