@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Serve an Axum app through an ngrok tunnel with one call."
-repository = "https://github.com/ishanj12/ngrok-axum"
+repository = "https://github.com/ngrok-samples/ngrok-axum"
 
 [dependencies]
 axum = { version = "0.7.4", features = ["tokio"] }
