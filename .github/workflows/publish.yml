@@ -36,7 +36,7 @@ jobs:
           echo "Crate version: $version"
 
           # skip any version that has already been published so reruns are safe
-          if curl -sf "https://crates.io/api/v1/crates/ngrok-axum" \
+          if curl -sf -A "ngrok-samples-publish-workflow (github.com/ngrok-samples/ngrok-axum)" "https://crates.io/api/v1/crates/ngrok-axum" \
             | jq -e --arg v "$version" '.versions[] | select(.num == $v)' > /dev/null 2>&1; then
             echo "ngrok-axum@${version} already exists on crates.io. Skipping publish."
           else
