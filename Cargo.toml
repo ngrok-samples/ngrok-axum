@@ -5,6 +5,9 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Serve an Axum app through an ngrok tunnel with one call."
 repository = "https://github.com/ngrok-samples/ngrok-axum"
+keywords = ["ngrok", "axum", "tunnel", "ingress"]
+categories = ["web-programming::http-server", "network-programming"]
+exclude = [".github/", "DESIGN.md"]
 
 [dependencies]
 axum = { version = "0.7.4", features = ["tokio"] }
