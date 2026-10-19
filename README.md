@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
    ```toml
    [dependencies]
    ngrok-axum = "0.1"
-   axum = "0.7"
+   axum = "0.8"
    tokio = { version = "1", features = ["full"] }
    ```
 
